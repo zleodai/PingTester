@@ -1,0 +1,5 @@
+Starting ping dashboard...
+Gateway target: 10.0.0.1
+Internet target: 8.8.8.8
+Database file: C:\Users\Leo\Documents\files\temp\pingTest\ping-monitor.db
+Dashboard: http://127.0.0.1:8765

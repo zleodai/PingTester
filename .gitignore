@@ -3,3 +3,9 @@ __pycache__/
 ping-log.csv
 ping-log-gateway.csv
 ping-log-internet.csv
+.env
+dashboard_stdout.log
+dashboard_stderr.log
+*.db
+*.db-shm
+*.db-wal

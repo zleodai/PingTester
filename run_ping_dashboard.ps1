@@ -4,8 +4,7 @@ param(
     [int]$TimeoutMs = 1000,
     [int]$HighPingThresholdMs = 150,
     [int]$Port = 8765,
-    [int]$HistorySize = 0,
-    [string]$LogFile = "ping-log.csv",
+    [string]$DatabaseFile = "ping-monitor.db",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ExtraArgs
 )
@@ -16,11 +15,11 @@ $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot "ping_dashboard.py"
 
 if (Get-Command py -ErrorAction SilentlyContinue) {
-    $pythonExe = "py"
+    $pythonCommand = @("py", "-3.12")
 } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-    $pythonExe = "python"
+    $pythonCommand = @("python")
 } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-    $pythonExe = "python3"
+    $pythonCommand = @("python3")
 } else {
     Write-Error "Python was not found on PATH. Install Python 3 or add it to PATH."
 }
@@ -32,13 +31,14 @@ $pythonArgs = @(
     "--timeout-ms", $TimeoutMs,
     "--high-ping-threshold-ms", $HighPingThresholdMs,
     "--port", $Port,
-    "--history-size", $HistorySize,
-    "--log-file", $LogFile
+    "--database-file", $DatabaseFile
 ) + $ExtraArgs
 
 Write-Host "Starting ping dashboard..."
 Write-Host "Gateway target: 10.0.0.1"
 Write-Host "Internet target: $InternetTarget"
+Write-Host "Database file: $DatabaseFile"
 Write-Host "Dashboard: http://127.0.0.1:$Port"
 
-& $pythonExe @pythonArgs
+$pythonCommandArgs = if ($pythonCommand.Length -gt 1) { $pythonCommand[1..($pythonCommand.Length - 1)] } else { @() }
+& $pythonCommand[0] $pythonCommandArgs @pythonArgs

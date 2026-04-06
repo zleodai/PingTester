@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ping Monitor</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: rgba(255, 252, 245, 0.95);
+      --panel-border: rgba(53, 42, 26, 0.12);
+      --ink: #1f1a14;
+      --muted: #756754;
+      --accent: #005f73;
+      --accent-soft: rgba(0, 95, 115, 0.12);
+      --good: #2a9d8f;
+      --warn: #e76f51;
+      --bad: #c44536;
+      --grid: rgba(53, 42, 26, 0.10);
+      --shadow: 0 18px 40px rgba(53, 42, 26, 0.10);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(0, 95, 115, 0.10), transparent 34%),
+        radial-gradient(circle at top right, rgba(233, 196, 106, 0.18), transparent 28%),
+        linear-gradient(160deg, #f9f6ef 0%, #efe7d5 100%);
+    }
+    .shell {
+      max-width: 1500px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 20px 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .controls-grid {
+      display: grid;
+      grid-template-columns: minmax(250px, 1.4fr) minmax(280px, 1.2fr) repeat(2, minmax(180px, 1fr));
+      gap: 12px;
+      align-items: start;
+    }
+    .control-group { display: grid; gap: 8px; }
+    .control-note, .monitor-copy, .chart-note, .table-note {
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-family: "Trebuchet MS", sans-serif;
+    }
+    .control-note { font-size: 0.86rem; }
+    .window-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .window-position {
+      padding: 9px 12px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: "Trebuchet MS", sans-serif;
+      font-size: 0.9rem;
+    }
+    .monitor-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      min-height: 0;
+    }
+    .monitor-column {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+    }
+    .monitor-title-row, .chart-head, .table-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .eyebrow, .metric-label {
+      font-family: "Trebuchet MS", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .eyebrow { font-size: 12px; letter-spacing: 0.18em; }
+    .monitor-name, .chart-title, .table-title { margin: 0; }
+    .monitor-name { font-size: 1.45rem; }
+    .grid.metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metrics-grid .card {
+      padding: 14px;
+      border-radius: 18px;
+    }
+    .metric-value { font-size: clamp(1.2rem, 2.6vw, 2rem); line-height: 1; }
+    .metric-subtext {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-family: "Trebuchet MS", sans-serif;
+    }
+    .status-ok { color: var(--good); }
+    .status-warn { color: var(--warn); }
+    .status-bad { color: var(--bad); }
+    .chart-card, .session-card { padding: 14px 16px; }
+    .chart-shell {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+    .axis-y {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 8px 0 30px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-family: "Trebuchet MS", sans-serif;
+    }
+    .axis-y span, .axis-x span { white-space: nowrap; }
+    .plot-stack { display: grid; gap: 10px; }
+    .plot-area {
+      width: 100%;
+      height: 190px;
+      border-radius: 18px;
+      border: 1px solid var(--panel-border);
+      overflow: hidden;
+      position: relative;
+      background:
+        linear-gradient(to bottom, rgba(0, 95, 115, 0.07), transparent 48%),
+        repeating-linear-gradient(to bottom, transparent 0 63px, var(--grid) 63px 64px);
+    }
+    .plot-area.compact {
+      height: 120px;
+      background:
+        linear-gradient(to bottom, rgba(0, 95, 115, 0.05), transparent 38%),
+        repeating-linear-gradient(to bottom, transparent 0 53px, var(--grid) 53px 54px);
+    }
+    .axis-x {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-family: "Trebuchet MS", sans-serif;
+      column-gap: 8px;
+      padding: 4px 0 0;
+    }
+    .axis-x span:first-child { text-align: left; }
+    .axis-x span:nth-child(2) { text-align: center; }
+    .axis-x span:last-child { text-align: right; }
+    svg { width: 100%; height: 100%; display: block; }
+    .chart-fallback {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-style: italic;
+    }
+    .pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: "Trebuchet MS", sans-serif;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .summary-item { display: grid; gap: 4px; min-width: 0; }
+    .summary-item strong {
+      font-family: "Trebuchet MS", sans-serif;
+      font-size: 0.96rem;
+      overflow-wrap: anywhere;
+    }
+    .summary-item.summary-wide { grid-column: 1 / -1; }
+    code {
+      font-family: Consolas, monospace;
+      font-size: 0.92em;
+      background: rgba(53, 42, 26, 0.08);
+      padding: 0.18em 0.42em;
+      border-radius: 6px;
+      overflow-wrap: anywhere;
+    }
+    input, select, button { font: inherit; }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--ink);
+    }
+    button {
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    button:disabled { cursor: default; opacity: 0.55; }
+    @media (max-width: 980px) {
+      .controls-grid, .monitor-grid, .grid.metrics-grid, .summary-grid { grid-template-columns: 1fr; }
+      .chart-shell { grid-template-columns: 58px minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="card">
+      <div class="controls-grid">
+        <div class="control-group">
+          <div>Internet target: <strong id="current-target-control">-</strong></div>
+          <label for="target-input">Internet hostname or IP</label>
+          <input id="target-input" type="text" value="8.8.8.8" placeholder="Hostname or IP">
+          <button id="target-save" type="button">Apply internet target</button>
+          <div class="control-note" id="target-feedback">Changing the internet target starts a fresh internet session.</div>
+        </div>
+        <div class="control-group">
+          <div>Timeline window: <strong id="current-timeframe-control">1 hour</strong></div>
+          <label for="timeframe-select">Visible timeline window</label>
+          <select id="timeframe-select">
+            <option value="1m">1 minute</option>
+            <option value="5m">5 minutes</option>
+            <option value="10m">10 minutes</option>
+            <option value="30m">30 minutes</option>
+            <option value="1h" selected>1 hour</option>
+            <option value="2h">2 hours</option>
+            <option value="4h">4 hours</option>
+            <option value="12h">12 hours</option>
+            <option value="24h">24 hours</option>
+          </select>
+          <div class="window-nav">
+            <button id="older-window" type="button">Older</button>
+            <button id="newer-window" type="button">Newer</button>
+          </div>
+          <div class="window-position" id="window-position">Live view</div>
+          <div class="control-note">Charts query only the selected time slot for both monitors.</div>
+        </div>
+        <div class="control-group">
+          <div>Polling rate: <strong id="current-poll-rate">-</strong></div>
+          <label for="poll-rate-input">Polling rate (ms)</label>
+          <input id="poll-rate-input" type="number" min="1" step="50" value="1000">
+          <button id="poll-rate-save" type="button">Apply polling rate</button>
+          <div class="control-note" id="poll-rate-feedback">Changes apply to the next ping cycle.</div>
+        </div>
+        <div class="control-group">
+          <div>High-ping threshold: <strong id="current-high-ping-threshold">-</strong></div>
+          <label for="high-ping-threshold-input">Threshold (ms)</label>
+          <input id="high-ping-threshold-input" type="number" min="1" step="10" value="150">
+          <button id="high-ping-threshold-save" type="button">Apply threshold</button>
+          <div class="control-note" id="high-ping-threshold-feedback">Used for status and the latency threshold line.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="monitor-grid">
+      <section id="gateway-monitor-root" class="monitor-column"></section>
+      <section class="monitor-column">
+        <div class="monitor-title-row">
+          <div>
+            <span class="eyebrow">Internet</span>
+            <h2 class="monitor-name">Internet Target</h2>
+            <p class="monitor-copy">Targetable live endpoint monitor.</p>
+          </div>
+          <div class="pill" id="sample-count">0 samples in view</div>
+        </div>
+        <section class="grid metrics-grid">
+          <article class="card"><span class="metric-label">Target</span><div class="metric-value" id="target">-</div></article>
+          <article class="card"><span class="metric-label">Current</span><div class="metric-value" id="current-latency">-</div></article>
+          <article class="card"><span class="metric-label">Average</span><div class="metric-value" id="avg-latency">-</div></article>
+          <article class="card"><span class="metric-label">Packet Loss</span><div class="metric-value" id="packet-loss">-</div><div class="metric-subtext" id="packet-loss-events">0 total loss events</div></article>
+          <article class="card"><span class="metric-label">Status</span><div class="metric-value" id="status-text">Waiting</div><div class="metric-subtext" id="status-detail">No samples yet</div></article>
+        </section>
+        <article class="card chart-card">
+          <div class="chart-head"><div><h2 class="chart-title">Latency Timeline</h2><div class="chart-note" id="latency-note">Waiting for data...</div></div></div>
+          <div class="chart-shell"><div class="axis-y" id="latency-y-axis"></div><div class="plot-stack"><div class="plot-area" id="latency-plot"><svg id="latency-chart" viewBox="0 0 900 190" preserveAspectRatio="none"></svg><div class="chart-fallback" id="latency-fallback">Waiting for enough data to draw the timeline.</div></div><div class="axis-x" id="latency-x-axis"></div></div></div>
+        </article>
+        <article class="card chart-card">
+          <div class="chart-head"><div><h2 class="chart-title">Packet Loss Timeline</h2><div class="chart-note" id="loss-note">Waiting for the selected time window...</div></div><div class="pill" id="loss-window-count">0 events in view</div></div>
+          <div class="chart-shell"><div class="axis-y" id="loss-y-axis"></div><div class="plot-stack"><div class="plot-area compact" id="loss-plot"><svg id="loss-chart" viewBox="0 0 900 120" preserveAspectRatio="none"></svg><div class="chart-fallback" id="loss-fallback">No packet-loss data in this time window.</div></div><div class="axis-x" id="loss-x-axis"></div></div></div>
+        </article>
+        <article class="card session-card">
+          <div class="table-head"><div><h2 class="table-title">Session Summary</h2><div class="table-note">Internet monitor details</div></div></div>
+          <div class="summary-grid">
+            <div class="summary-item"><span class="metric-label">Started</span><strong id="started-at">-</strong></div>
+            <div class="summary-item"><span class="metric-label">Last Sample</span><strong id="last-sample-at">-</strong></div>
+            <div class="summary-item"><span class="metric-label">Min / Max</span><strong id="min-max">-</strong></div>
+            <div class="summary-item"><span class="metric-label">Sent / Received / Lost</span><strong id="counts">-</strong></div>
+            <div class="summary-item"><span class="metric-label">Consecutive Failures</span><strong id="failures">0</strong></div>
+            <div class="summary-item"><span class="metric-label">Worker PID</span><strong id="worker-pid">-</strong></div>
+            <div class="summary-item summary-wide"><span class="metric-label">Session ID</span><strong id="session-id">-</strong></div>
+          </div>
+        </article>
+      </section>
+    </section>
+  </div>
+  <script>
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const TIMEFRAME_OPTIONS = {"1m": {label: "1 minute"}, "5m": {label: "5 minutes"}, "10m": {label: "10 minutes"}, "30m": {label: "30 minutes"}, "1h": {label: "1 hour"}, "2h": {label: "2 hours"}, "4h": {label: "4 hours"}, "12h": {label: "12 hours"}, "24h": {label: "24 hours"}};
+    let configSaveInFlight = false;
+    let windowOffset = 0;
+
+    function gatewayId(name) { return `gateway-${name}`; }
+    function setMetric(id, value) { const el = document.getElementById(id); if (el) { el.textContent = value; } }
+    function syncInputValue(id, value) { const input = document.getElementById(id); if (document.activeElement !== input && !configSaveInFlight) { input.value = String(value); } }
+    function formatTimeLabel(timestamp) {
+      if (!timestamp || timestamp === "-") { return "-"; }
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) { return timestamp; }
+      return date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+    }
+    function axisLabels(windowData) {
+      const start = new Date(windowData.start_at).getTime();
+      const end = new Date(windowData.end_at).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) { return ["-", "-", "-"]; }
+      return [
+        formatTimeLabel(new Date(start).toISOString()),
+        formatTimeLabel(new Date(start + (end - start) / 2).toISOString()),
+        formatTimeLabel(new Date(end).toISOString()),
+      ];
+    }
+    function setAxisLabels(id, labels) {
+      const root = document.getElementById(id);
+      root.innerHTML = "";
+      labels.forEach((label) => {
+        const span = document.createElement("span");
+        span.textContent = label;
+        root.appendChild(span);
+      });
+    }
+    function selectedTimeframeKey() {
+      const key = document.getElementById("timeframe-select").value;
+      return TIMEFRAME_OPTIONS[key] ? key : "1h";
+    }
+    function makeSvgElement(name, attrs) {
+      const el = document.createElementNS(SVG_NS, name);
+      Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, String(value)));
+      return el;
+    }
+    function configureSvg(svgId, plotId, height) {
+      const svg = document.getElementById(svgId);
+      const plot = document.getElementById(plotId);
+      const width = Math.max(1, Math.round(plot.clientWidth || 900));
+      svg.innerHTML = "";
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("width", String(width));
+      svg.setAttribute("height", String(height));
+      return {svg, width};
+    }
+    function drawGrid(svg, width, height, padding, lineCount) {
+      for (let index = 0; index < lineCount; index += 1) {
+        const ratio = lineCount === 1 ? 0 : index / (lineCount - 1);
+        const y = padding + ratio * (height - padding * 2);
+        svg.appendChild(makeSvgElement("line", {x1: padding, y1: y, x2: width - padding, y2: y, stroke: "rgba(53, 42, 26, 0.10)", "stroke-width": 1}));
+      }
+    }
+    function getDomain(windowData) {
+      const startMs = new Date(windowData.start_at).getTime();
+      const endMs = new Date(windowData.end_at).getTime();
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) { return null; }
+      return {startMs, endMs, spanMs: endMs - startMs};
+    }
+    function getSampleX(sample, domain, padding, usableWidth) {
+      const sampleMs = new Date(sample.timestamp).getTime();
+      if (!Number.isFinite(sampleMs) || !domain) { return padding; }
+      const ratio = (sampleMs - domain.startMs) / domain.spanMs;
+      return padding + Math.min(Math.max(ratio, 0), 1) * usableWidth;
+    }
+    function getLatencyVisualStyle(sampleCount, width, padding) {
+      const usableWidth = Math.max(width - padding * 2, 1);
+      const pixelsPerSample = usableWidth / Math.max(sampleCount - 1, 1);
+      const lineWidth = Math.max(0.8, Math.min(3, pixelsPerSample * 0.9));
+      const thresholdWidth = Math.max(0.8, Math.min(2, lineWidth * 0.85));
+      const pointRadius = Math.max(0.9, Math.min(3.6, pixelsPerSample * 0.65 + 0.6));
+      const timeoutRadius = Math.max(pointRadius + 0.4, Math.min(4.8, pointRadius + 0.9));
+      return {lineWidth, thresholdWidth, pointRadius, timeoutRadius, thresholdDash: `${Math.max(3, Math.round(4 + lineWidth * 2))} ${Math.max(2, Math.round(3 + lineWidth))}`};
+    }
+    function setStatus(prefix, currentLatencyMs, thresholdMs, lastStatus) {
+      const statusId = prefix ? `${prefix}-status-text` : "status-text";
+      const detailId = prefix ? `${prefix}-status-detail` : "status-detail";
+      const statusEl = document.getElementById(statusId);
+      const detailEl = document.getElementById(detailId);
+      if (currentLatencyMs === null || currentLatencyMs === undefined) {
+        statusEl.textContent = "Timeout";
+        statusEl.className = "metric-value status-bad";
+        detailEl.textContent = lastStatus;
+        return;
+      }
+      if (currentLatencyMs > thresholdMs) {
+        statusEl.textContent = "High Ping";
+        statusEl.className = "metric-value status-warn";
+        detailEl.textContent = `${currentLatencyMs} ms exceeds ${thresholdMs} ms`;
+        return;
+      }
+      statusEl.textContent = "Healthy";
+      statusEl.className = "metric-value status-ok";
+      detailEl.textContent = lastStatus;
+    }
+    function renderLatencyChart(prefix, windowData, timeoutMs, thresholdMs) {
+      const chartId = prefix ? `${prefix}-latency-chart` : "latency-chart";
+      const plotId = prefix ? `${prefix}-latency-plot` : "latency-plot";
+      const fallbackId = prefix ? `${prefix}-latency-fallback` : "latency-fallback";
+      const xAxisId = prefix ? `${prefix}-latency-x-axis` : "latency-x-axis";
+      const yAxisId = prefix ? `${prefix}-latency-y-axis` : "latency-y-axis";
+      const fallback = document.getElementById(fallbackId);
+      const history = windowData.samples || [];
+      setAxisLabels(xAxisId, axisLabels(windowData));
+      if (history.length < 2) {
+        setAxisLabels(yAxisId, ["-", "-", "-"]);
+        document.getElementById(chartId).innerHTML = "";
+        fallback.style.display = "grid";
+        return;
+      }
+      fallback.style.display = "none";
+      const {svg, width} = configureSvg(chartId, plotId, 190);
+      const height = 190;
+      const padding = 28;
+      const usableWidth = width - padding * 2;
+      const usableHeight = height - padding * 2;
+      const domain = getDomain(windowData);
+      const visual = getLatencyVisualStyle(history.length, width, padding);
+      const values = history.map((sample) => sample.latency_ms ?? timeoutMs);
+      const maxValue = Math.max(...values, timeoutMs, thresholdMs, 10);
+      setAxisLabels(yAxisId, [`${maxValue} ms`, `${Math.round(maxValue / 2)} ms`, "0 ms"]);
+      drawGrid(svg, width, height, padding, 5);
+      const points = history.map((sample) => {
+        const x = getSampleX(sample, domain, padding, usableWidth);
+        const value = sample.latency_ms ?? timeoutMs;
+        const y = height - padding - (value / maxValue) * usableHeight;
+        return {x, y, sample};
+      });
+      const thresholdY = height - padding - (thresholdMs / maxValue) * usableHeight;
+      svg.appendChild(makeSvgElement("line", {x1: padding, y1: thresholdY, x2: width - padding, y2: thresholdY, stroke: "#e76f51", "stroke-width": visual.thresholdWidth, "stroke-dasharray": visual.thresholdDash}));
+      const areaPoints = [`${padding},${height - padding}`].concat(points.map((point) => `${point.x},${point.y}`)).concat(`${width - padding},${height - padding}`).join(" ");
+      svg.appendChild(makeSvgElement("polygon", {points: areaPoints, fill: "rgba(0, 95, 115, 0.16)"}));
+      svg.appendChild(makeSvgElement("polyline", {points: points.map((point) => `${point.x},${point.y}`).join(" "), fill: "none", stroke: "#005f73", "stroke-width": visual.lineWidth, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+      points.forEach((point) => {
+        const fill = !point.sample.success ? "#c44536" : (point.sample.latency_ms ?? 0) > thresholdMs ? "#e76f51" : "#2a9d8f";
+        svg.appendChild(makeSvgElement("circle", {cx: point.x, cy: point.y, r: !point.sample.success ? visual.timeoutRadius : visual.pointRadius, fill}));
+      });
+    }
+    function renderLossChart(prefix, windowData) {
+      const chartId = prefix ? `${prefix}-loss-chart` : "loss-chart";
+      const plotId = prefix ? `${prefix}-loss-plot` : "loss-plot";
+      const fallbackId = prefix ? `${prefix}-loss-fallback` : "loss-fallback";
+      const xAxisId = prefix ? `${prefix}-loss-x-axis` : "loss-x-axis";
+      const yAxisId = prefix ? `${prefix}-loss-y-axis` : "loss-y-axis";
+      const countId = prefix ? `${prefix}-loss-window-count` : "loss-window-count";
+      const fallback = document.getElementById(fallbackId);
+      const lossWindow = windowData.loss_window;
+      const buckets = lossWindow.buckets || [];
+      const maxLossCount = Math.max(lossWindow.max_loss_count || 0, 1);
+      setAxisLabels(xAxisId, axisLabels(windowData));
+      setMetric(countId, `${lossWindow.total_loss_events} events in view`);
+      if (!buckets.length || lossWindow.total_loss_events === 0) {
+        setAxisLabels(yAxisId, ["1 event", "0 events"]);
+        document.getElementById(chartId).innerHTML = "";
+        fallback.style.display = "grid";
+        return;
+      }
+      fallback.style.display = "none";
+      const {svg, width} = configureSvg(chartId, plotId, 120);
+      const height = 120;
+      const padding = 24;
+      const baselineY = height - padding;
+      const usableWidth = Math.max(width - padding * 2, 1);
+      const usableHeight = height - padding * 2;
+      const barWidth = Math.max(1.5, Math.min(5, usableWidth / Math.max(buckets.length, 1) * 0.8));
+      const midpointLabel = maxLossCount <= 1 ? "0 events" : `${Math.max(1, Math.round(maxLossCount / 2))} events`;
+      setAxisLabels(yAxisId, [`${maxLossCount} ${maxLossCount === 1 ? "event" : "events"}`, midpointLabel, "0 events"]);
+      drawGrid(svg, width, height, padding, 3);
+      svg.appendChild(makeSvgElement("line", {x1: padding, y1: baselineY, x2: width - padding, y2: baselineY, stroke: "rgba(53, 42, 26, 0.25)", "stroke-width": 2}));
+      buckets.forEach((bucket, index) => {
+        if (!bucket.loss_count) { return; }
+        const centerX = padding + (index / Math.max(buckets.length - 1, 1)) * usableWidth;
+        const ratio = bucket.loss_count / maxLossCount;
+        const topY = baselineY - ratio * usableHeight;
+        svg.appendChild(makeSvgElement("rect", {x: centerX - barWidth / 2, y: topY, width: barWidth, height: baselineY - topY, rx: Math.max(1, Math.min(4, barWidth / 3)), fill: "#c44536", opacity: 0.85}));
+      });
+    }
+    function applyMonitorData(prefix, data) {
+      const base = prefix ? `${prefix}-` : "";
+      const windowData = data.window;
+      setMetric(`${base}target`, data.target);
+      setMetric(`${base}current-latency`, data.current_latency_ms === null ? "timeout" : `${data.current_latency_ms} ms`);
+      setMetric(`${base}avg-latency`, data.avg_latency_ms === null ? "-" : `${data.avg_latency_ms} ms`);
+      setMetric(`${base}packet-loss`, `${data.packet_loss_percent}%`);
+      setMetric(`${base}packet-loss-events`, `${data.packet_loss_events_total} total loss events`);
+      setMetric(`${base}started-at`, data.started_at ?? "-");
+      setMetric(`${base}last-sample-at`, data.last_sample_at ?? "-");
+      setMetric(`${base}min-max`, data.min_latency_ms === null ? "-" : `${data.min_latency_ms} ms / ${data.max_latency_ms} ms`);
+      setMetric(`${base}counts`, `${data.sent} / ${data.received} / ${data.lost}`);
+      setMetric(`${base}failures`, String(data.consecutive_failures));
+      setMetric(`${base}worker-pid`, data.worker_pid === null ? "-" : String(data.worker_pid));
+      setMetric(`${base}session-id`, data.session_id === null ? "-" : String(data.session_id));
+      setMetric(`${base}sample-count`, `${windowData.sample_count} samples in view`);
+      const liveCopy = windowData.is_live ? "Live window." : `Window ${windowData.offset_windows} step(s) back.`;
+      setMetric(`${base}latency-note`, `${liveCopy} ${windowData.timeframe_label} range from ${formatTimeLabel(windowData.start_at)} to ${formatTimeLabel(windowData.end_at)}. Rendering ${windowData.rendered_sample_count} point(s).`);
+      setMetric(`${base}loss-note`, `${windowData.loss_window.total_loss_events} packet-loss event(s) in the selected ${windowData.timeframe_label.toLowerCase()} window.`);
+      setStatus(prefix, data.current_latency_ms, data.high_ping_threshold_ms, data.last_status);
+      renderLatencyChart(prefix, windowData, data.timeout_ms, data.high_ping_threshold_ms);
+      renderLossChart(prefix, windowData);
+    }
+    function buildGatewayMarkup() {
+      return `
+        <div class="monitor-title-row"><div><span class="eyebrow">Gateway</span><h2 class="monitor-name">Local Gateway</h2><p class="monitor-copy">Pinned gateway monitor for 10.0.0.1.</p></div><div class="pill" id="gateway-sample-count">0 samples in view</div></div>
+        <section class="grid metrics-grid">
+          <article class="card"><span class="metric-label">Target</span><div class="metric-value" id="gateway-target">-</div></article>
+          <article class="card"><span class="metric-label">Current</span><div class="metric-value" id="gateway-current-latency">-</div></article>
+          <article class="card"><span class="metric-label">Average</span><div class="metric-value" id="gateway-avg-latency">-</div></article>
+          <article class="card"><span class="metric-label">Packet Loss</span><div class="metric-value" id="gateway-packet-loss">-</div><div class="metric-subtext" id="gateway-packet-loss-events">0 total loss events</div></article>
+          <article class="card"><span class="metric-label">Status</span><div class="metric-value" id="gateway-status-text">Waiting</div><div class="metric-subtext" id="gateway-status-detail">No samples yet</div></article>
+        </section>
+        <article class="card chart-card"><div class="chart-head"><div><h2 class="chart-title">Latency Timeline</h2><div class="chart-note" id="gateway-latency-note">Waiting for data...</div></div></div><div class="chart-shell"><div class="axis-y" id="gateway-latency-y-axis"></div><div class="plot-stack"><div class="plot-area" id="gateway-latency-plot"><svg id="gateway-latency-chart" viewBox="0 0 900 190" preserveAspectRatio="none"></svg><div class="chart-fallback" id="gateway-latency-fallback">Waiting for enough data to draw the timeline.</div></div><div class="axis-x" id="gateway-latency-x-axis"></div></div></div></article>
+        <article class="card chart-card"><div class="chart-head"><div><h2 class="chart-title">Packet Loss Timeline</h2><div class="chart-note" id="gateway-loss-note">Waiting for the selected time window...</div></div><div class="pill" id="gateway-loss-window-count">0 events in view</div></div><div class="chart-shell"><div class="axis-y" id="gateway-loss-y-axis"></div><div class="plot-stack"><div class="plot-area compact" id="gateway-loss-plot"><svg id="gateway-loss-chart" viewBox="0 0 900 120" preserveAspectRatio="none"></svg><div class="chart-fallback" id="gateway-loss-fallback">No packet-loss data in this time window.</div></div><div class="axis-x" id="gateway-loss-x-axis"></div></div></div></article>
+        <article class="card session-card"><div class="table-head"><div><h2 class="table-title">Session Summary</h2><div class="table-note">Gateway monitor details</div></div></div><div class="summary-grid"><div class="summary-item"><span class="metric-label">Started</span><strong id="gateway-started-at">-</strong></div><div class="summary-item"><span class="metric-label">Last Sample</span><strong id="gateway-last-sample-at">-</strong></div><div class="summary-item"><span class="metric-label">Min / Max</span><strong id="gateway-min-max">-</strong></div><div class="summary-item"><span class="metric-label">Sent / Received / Lost</span><strong id="gateway-counts">-</strong></div><div class="summary-item"><span class="metric-label">Consecutive Failures</span><strong id="gateway-failures">0</strong></div><div class="summary-item"><span class="metric-label">Worker PID</span><strong id="gateway-worker-pid">-</strong></div><div class="summary-item summary-wide"><span class="metric-label">Session ID</span><strong id="gateway-session-id">-</strong></div></div></article>`;
+    }
+    async function updatePollRate() {
+      if (configSaveInFlight) { return; }
+      const input = document.getElementById("poll-rate-input");
+      const feedback = document.getElementById("poll-rate-feedback");
+      const intervalMs = Number.parseInt(input.value, 10);
+      if (!Number.isFinite(intervalMs) || intervalMs <= 0) { feedback.textContent = "Enter a polling rate greater than 0 ms."; return; }
+      configSaveInFlight = true;
+      feedback.textContent = "Saving...";
+      try {
+        const response = await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({interval_ms: intervalMs})});
+        const payload = await response.json();
+        if (!response.ok) { throw new Error(payload.error || "Unable to save polling rate"); }
+        feedback.textContent = `Polling rate updated to ${payload.interval_ms} ms.`;
+        await refresh();
+      } catch (error) {
+        feedback.textContent = error.message;
+      } finally {
+        configSaveInFlight = false;
+      }
+    }
+    async function updateHighPingThreshold() {
+      if (configSaveInFlight) { return; }
+      const input = document.getElementById("high-ping-threshold-input");
+      const feedback = document.getElementById("high-ping-threshold-feedback");
+      const thresholdMs = Number.parseInt(input.value, 10);
+      if (!Number.isFinite(thresholdMs) || thresholdMs <= 0) { feedback.textContent = "Enter a threshold greater than 0 ms."; return; }
+      configSaveInFlight = true;
+      feedback.textContent = "Saving...";
+      try {
+        const response = await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({high_ping_threshold_ms: thresholdMs})});
+        const payload = await response.json();
+        if (!response.ok) { throw new Error(payload.error || "Unable to save threshold"); }
+        feedback.textContent = `High-ping threshold updated to ${payload.high_ping_threshold_ms} ms.`;
+        await refresh();
+      } catch (error) {
+        feedback.textContent = error.message;
+      } finally {
+        configSaveInFlight = false;
+      }
+    }
+    async function updateTarget() {
+      if (configSaveInFlight) { return; }
+      const input = document.getElementById("target-input");
+      const feedback = document.getElementById("target-feedback");
+      const target = input.value.trim();
+      if (!target) { feedback.textContent = "Enter a hostname or IP address."; return; }
+      configSaveInFlight = true;
+      feedback.textContent = "Saving...";
+      try {
+        const response = await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({target})});
+        const payload = await response.json();
+        if (!response.ok) { throw new Error(payload.error || "Unable to save target"); }
+        windowOffset = 0;
+        feedback.textContent = `Internet target updated to ${payload.target}. A new internet session has started.`;
+        await refresh();
+      } catch (error) {
+        feedback.textContent = error.message;
+      } finally {
+        configSaveInFlight = false;
+      }
+    }
+    async function refresh() {
+      try {
+        const timeframeKey = selectedTimeframeKey();
+        const response = await fetch(`/api/status?timeframe=${encodeURIComponent(timeframeKey)}&offset=${windowOffset}`, {cache: "no-store"});
+        const data = await response.json();
+        setMetric("current-target-control", data.internet.target);
+        setMetric("current-poll-rate", `${Math.round(data.internet.interval_seconds * 1000)} ms`);
+        setMetric("current-high-ping-threshold", `${data.internet.high_ping_threshold_ms} ms`);
+        syncInputValue("poll-rate-input", Math.round(data.internet.interval_seconds * 1000));
+        syncInputValue("high-ping-threshold-input", data.internet.high_ping_threshold_ms);
+        syncInputValue("target-input", data.internet.target);
+        const timeframeLabel = TIMEFRAME_OPTIONS[selectedTimeframeKey()].label;
+        setMetric("current-timeframe-control", timeframeLabel);
+        setMetric("window-position", data.internet.window.is_live ? `Live view: ${formatTimeLabel(data.internet.window.start_at)} to ${formatTimeLabel(data.internet.window.end_at)}` : `Viewing ${data.internet.window.offset_windows} window(s) back: ${formatTimeLabel(data.internet.window.start_at)} to ${formatTimeLabel(data.internet.window.end_at)}`);
+        document.getElementById("newer-window").disabled = windowOffset === 0;
+        applyMonitorData("", data.internet);
+        applyMonitorData("gateway", data.gateway);
+      } catch (error) {
+        document.getElementById("status-text").textContent = "Disconnected";
+        document.getElementById("status-text").className = "metric-value status-bad";
+        document.getElementById("status-detail").textContent = "The browser could not reach the local monitor.";
+        document.getElementById("gateway-status-text").textContent = "Disconnected";
+        document.getElementById("gateway-status-text").className = "metric-value status-bad";
+        document.getElementById("gateway-status-detail").textContent = "The browser could not reach the local monitor.";
+      }
+    }
+    document.getElementById("gateway-monitor-root").innerHTML = buildGatewayMarkup();
+    document.getElementById("poll-rate-save").addEventListener("click", updatePollRate);
+    document.getElementById("poll-rate-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { updatePollRate(); } });
+    document.getElementById("high-ping-threshold-save").addEventListener("click", updateHighPingThreshold);
+    document.getElementById("high-ping-threshold-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { updateHighPingThreshold(); } });
+    document.getElementById("target-save").addEventListener("click", updateTarget);
+    document.getElementById("target-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { updateTarget(); } });
+    document.getElementById("timeframe-select").addEventListener("change", async () => { windowOffset = 0; await refresh(); });
+    document.getElementById("older-window").addEventListener("click", async () => { windowOffset += 1; await refresh(); });
+    document.getElementById("newer-window").addEventListener("click", async () => { if (windowOffset > 0) { windowOffset -= 1; } await refresh(); });
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>
