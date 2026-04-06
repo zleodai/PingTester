@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 ping-log.csv
+ping-log-gateway.csv
+ping-log-internet.csv
